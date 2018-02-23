@@ -366,6 +366,9 @@ UniValue createmultisig(const UniValue& params, bool fHelp)
     // Construct using pay-to-script-hash:
     CScript inner = _createmultisig_redeemScript(params);
     CScriptID innerID(inner);
+    //from Bitcoin rpcwallet.cpp: pwallet->AddCScript(inner);
+    CTxDestination dest = pwallet->AddAndGetDestinationForScript(inner, output_type);
+    //from Bitcoin rpcwallet.cpp: pwallet->SetAddressBook(dest, strAccount, "send");
     CBitcoinAddress address(innerID);
 
     UniValue result(UniValue::VOBJ);

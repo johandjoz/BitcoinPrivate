@@ -1119,7 +1119,7 @@ public:
 };
 
 // BEGIN from Bitcoin
-/* (Dont need, using txnouttype)
+/* (Dont need)
 OutputType ParseOutputType(const std::string& str, OutputType default_type = OUTPUT_TYPE_DEFAULT);
 const std::string& FormatOutputType(OutputType type);
 */

@@ -33,6 +33,11 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_MULTISIG: return "multisig";
     case TX_MULTISIG_REPLAY: return "multisigreplay";
     case TX_NULL_DATA: return "nulldata";
+
+    case TX_WITNESS_V0_SCRIPTHASH return "witness_v0_scripthash";
+    case TX_WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
+    // For Witness versions not already defined above:
+    case TX_WITNESS_UNKNOWN: return "witness_unknown";
     }
     return NULL;
 }

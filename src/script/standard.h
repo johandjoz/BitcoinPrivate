@@ -69,11 +69,13 @@ enum txnouttype
     TX_SCRIPTHASH,
     TX_MULTISIG,
     TX_MULTISIG_REPLAY,
-    TX_NULL_DATA,
+    TX_NULL_DATA, //!< unspendable OP_RETURN script that carries data
+
+    TX_WITNESS_V0_SCRIPTHASH,
+    TX_WITNESS_V0_KEYHASH,
+    TX_WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
 };
 
-/* From Bitcoin:
-(Will flatten against txnouttype; wont need)
 enum OutputType : int
 {
     OUTPUT_TYPE_NONE,
@@ -83,7 +85,6 @@ enum OutputType : int
 
     OUTPUT_TYPE_DEFAULT = OUTPUT_TYPE_P2SH_SEGWIT
 };
-*/
 
 class CNoDestination {
 public:
