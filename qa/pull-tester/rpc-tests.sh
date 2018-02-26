@@ -11,9 +11,11 @@ export BITCOIND=${REAL_BITCOIND}
 #Run the tests
 
 testScripts=(
+    'paymentdisclosure.py'
     'prioritisetransaction.py'
     'wallet_treestate.py'
     'wallet_protectcoinbase.py'
+    'wallet_shieldcoinbase.py'
     'wallet.py'
     'wallet_nullifiers.py'
     'wallet_1941.py'
@@ -34,8 +36,12 @@ testScripts=(
     'fundrawtransaction.py'
     'signrawtransactions.py'
     'walletbackup.py'
+    'key_import_export.py'
     'nodehandling.py'
     'reindex.py'
+    'addressindex.py'
+    'timestampindex.py'
+    'spentindex.py'
     'decodescript.py'
     'disablewallet.py'
     'zcjoinsplit.py'
@@ -58,7 +64,6 @@ testScriptsExt=(
     'smartfees.py'
     'maxblocksinflight.py'
     'invalidblockrequest.py'
-    'p2p-versionbits-warning.py'
 #    'forknotify.py'
     'p2p-acceptblock.py'
 );
@@ -84,7 +89,7 @@ function runTestScript
 
     echo -e "=== Running testscript ${testName} ==="
 
-    if eval "$@" | sed 's/^/  /'
+    if eval "$@"
     then
         successCount=$(expr $successCount + 1)
         echo "--- Success: ${testName} ---"

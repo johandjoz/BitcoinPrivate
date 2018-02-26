@@ -21,11 +21,12 @@
 #include "script/script.h"
 #include "script/sigcache.h"
 #include "script/standard.h"
+
+#include "spentindex.h"
 #include "sync.h"
 #include "tinyformat.h"
 #include "txmempool.h"
 #include "uint256.h"
-#include "versionbits.h"
 
 #include <algorithm>
 #include <exception>
@@ -93,6 +94,12 @@ static const unsigned int DATABASE_WRITE_INTERVAL = 60 * 60;
 static const unsigned int DATABASE_FLUSH_INTERVAL = 24 * 60 * 60;
 /** Maximum length of reject messages. */
 static const unsigned int MAX_REJECT_MESSAGE_LENGTH = 111;
+
+static const bool DEFAULT_ADDRESSINDEX = false;
+static const bool DEFAULT_TIMESTAMPINDEX = false;
+static const bool DEFAULT_SPENTINDEX = false;
+static const unsigned int DEFAULT_DB_MAX_OPEN_FILES = 1000;
+static const bool DEFAULT_DB_COMPRESSION = true;
 
 // Sanity check the magic numbers when we change them
 BOOST_STATIC_ASSERT(DEFAULT_BLOCK_MAX_SIZE <= MAX_BLOCK_SIZE);
@@ -163,11 +170,11 @@ void RegisterNodeSignals(CNodeSignals& nodeSignals);
 /** Unregister a network node */
 void UnregisterNodeSignals(CNodeSignals& nodeSignals);
 
-/**
+/** 
  * Process an incoming block. This only returns after the best known valid
  * block is made active. Note that it does not, however, guarantee that the
  * specific block passed to it has been checked for validity!
- *
+ * 
  * @param[out]  state   This may be set to an Error state if any error occurred processing it, including during validation/connection/etc of otherwise unrelated blocks during reorganisation; or it may be set to an Invalid state if pblock is itself invalid (but this is not guaranteed even when the block is checked). If you want to *possibly* get feedback on whether pblock is valid, you must also install a CValidationInterface (see validationinterface.h) - this will have its BlockChecked method called whenever *any* block completes validation.
  * @param[in]   pfrom   The node which we are receiving the block from; it is added to mapBlockSource and may be penalised if the block is invalid.
  * @param[in]   pblock  The block we want to process.
@@ -175,12 +182,7 @@ void UnregisterNodeSignals(CNodeSignals& nodeSignals);
  * @param[out]  dbp     If pblock is stored to disk (or already there), this will be set to its location.
  * @return True if state.IsValid()
  */
-bool ProcessNewBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, bool fForceProcessing, CDiskBlockPos *dbp
-#ifdef FORK_CB_INPUT
-                , bool fCalledFromMiner = false
-#endif
-                    );
-
+bool ProcessNewBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, bool fForceProcessing, CDiskBlockPos *dbp);
 /** Check whether enough disk space is available for an incoming block */
 bool CheckDiskSpace(uint64_t nAdditionalBytes = 0);
 /** Open a block file (blk?????.dat) */
@@ -258,14 +260,343 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
                         bool* pfMissingInputs, bool fRejectAbsurdFee=false);
 
 
-/** Get the BIP9 state for a given deployment at the current tip. */
-ThresholdState VersionBitsTipState(const Consensus::Params& params, Consensus::DeploymentPos pos);
-
 struct CNodeStateStats {
     int nMisbehavior;
     int nSyncHeight;
     int nCommonHeight;
     std::vector<int> vHeightInFlight;
+};
+
+struct CTimestampIndexIteratorKey {
+    unsigned int timestamp;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 4;
+    }
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata32be(s, timestamp);
+    }
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        timestamp = ser_readdata32be(s);
+    }
+
+    CTimestampIndexIteratorKey(unsigned int time) {
+        timestamp = time;
+    }
+
+    CTimestampIndexIteratorKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        timestamp = 0;
+    }
+};
+
+struct CTimestampIndexKey {
+    unsigned int timestamp;
+    uint256 blockHash;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 36;
+    }
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata32be(s, timestamp);
+        blockHash.Serialize(s, nType, nVersion);
+    }
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        timestamp = ser_readdata32be(s);
+        blockHash.Unserialize(s, nType, nVersion);
+    }
+
+    CTimestampIndexKey(unsigned int time, uint256 hash) {
+        timestamp = time;
+        blockHash = hash;
+    }
+
+    CTimestampIndexKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        timestamp = 0;
+        blockHash.SetNull();
+    }
+};
+
+struct CTimestampBlockIndexKey {
+    uint256 blockHash;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 32;
+    }
+
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        blockHash.Serialize(s, nType, nVersion);
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        blockHash.Unserialize(s, nType, nVersion);
+    }
+
+    CTimestampBlockIndexKey(uint256 hash) {
+        blockHash = hash;
+    }
+
+    CTimestampBlockIndexKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        blockHash.SetNull();
+    }
+};
+
+struct CTimestampBlockIndexValue {
+    unsigned int ltimestamp;
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 4;
+    }
+
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata32be(s, ltimestamp);
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        ltimestamp = ser_readdata32be(s);
+    }
+
+    CTimestampBlockIndexValue (unsigned int time) {
+        ltimestamp = time;
+    }
+
+    CTimestampBlockIndexValue() {
+        SetNull();
+    }
+
+    void SetNull() {
+        ltimestamp = 0;
+    }
+};
+
+struct CAddressUnspentKey {
+    unsigned int type;
+    uint160 hashBytes;
+    uint256 txhash;
+    size_t index;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 57;
+    }
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata8(s, type);
+        hashBytes.Serialize(s, nType, nVersion);
+        txhash.Serialize(s, nType, nVersion);
+        ser_writedata32(s, index);
+    }
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        type = ser_readdata8(s);
+        hashBytes.Unserialize(s, nType, nVersion);
+        txhash.Unserialize(s, nType, nVersion);
+        index = ser_readdata32(s);
+    }
+
+    CAddressUnspentKey(unsigned int addressType, uint160 addressHash, uint256 txid, size_t indexValue) {
+        type = addressType;
+        hashBytes = addressHash;
+        txhash = txid;
+        index = indexValue;
+    }
+
+    CAddressUnspentKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        type = 0;
+        hashBytes.SetNull();
+        txhash.SetNull();
+        index = 0;
+    }
+};
+
+struct CAddressUnspentValue {
+    CAmount satoshis;
+    CScript script;
+    int blockHeight;
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(satoshis);
+        READWRITE(script);
+        READWRITE(blockHeight);
+    }
+
+    CAddressUnspentValue(CAmount sats, CScript scriptPubKey, int height) {
+        satoshis = sats;
+        script = scriptPubKey;
+        blockHeight = height;
+    }
+
+    CAddressUnspentValue() {
+        SetNull();
+    }
+
+    void SetNull() {
+        satoshis = -1;
+        script.clear();
+        blockHeight = 0;
+    }
+
+    bool IsNull() const {
+        return (satoshis == -1);
+    }
+};
+
+struct CAddressIndexKey {
+    unsigned int type;
+    uint160 hashBytes;
+    int blockHeight;
+    unsigned int txindex;
+    uint256 txhash;
+    size_t index;
+    bool spending;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 66;
+    }
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata8(s, type);
+        hashBytes.Serialize(s, nType, nVersion);
+        // Heights are stored big-endian for key sorting in LevelDB
+        ser_writedata32be(s, blockHeight);
+        ser_writedata32be(s, txindex);
+        txhash.Serialize(s, nType, nVersion);
+        ser_writedata32(s, index);
+        char f = spending;
+        ser_writedata8(s, f);
+    }
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        type = ser_readdata8(s);
+        hashBytes.Unserialize(s, nType, nVersion);
+        blockHeight = ser_readdata32be(s);
+        txindex = ser_readdata32be(s);
+        txhash.Unserialize(s, nType, nVersion);
+        index = ser_readdata32(s);
+        char f = ser_readdata8(s);
+        spending = f;
+    }
+
+    CAddressIndexKey(unsigned int addressType, uint160 addressHash, int height, int blockindex,
+                     uint256 txid, size_t indexValue, bool isSpending) {
+        type = addressType;
+        hashBytes = addressHash;
+        blockHeight = height;
+        txindex = blockindex;
+        txhash = txid;
+        index = indexValue;
+        spending = isSpending;
+    }
+
+    CAddressIndexKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        type = 0;
+        hashBytes.SetNull();
+        blockHeight = 0;
+        txindex = 0;
+        txhash.SetNull();
+        index = 0;
+        spending = false;
+    }
+
+};
+
+struct CAddressIndexIteratorKey {
+    unsigned int type;
+    uint160 hashBytes;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 21;
+    }
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata8(s, type);
+        hashBytes.Serialize(s, nType, nVersion);
+    }
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        type = ser_readdata8(s);
+        hashBytes.Unserialize(s, nType, nVersion);
+    }
+
+    CAddressIndexIteratorKey(unsigned int addressType, uint160 addressHash) {
+        type = addressType;
+        hashBytes = addressHash;
+    }
+
+    CAddressIndexIteratorKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        type = 0;
+        hashBytes.SetNull();
+    }
+};
+
+struct CAddressIndexIteratorHeightKey {
+    unsigned int type;
+    uint160 hashBytes;
+    int blockHeight;
+
+    size_t GetSerializeSize(int nType, int nVersion) const {
+        return 25;
+    }
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const {
+        ser_writedata8(s, type);
+        hashBytes.Serialize(s, nType, nVersion);
+        ser_writedata32be(s, blockHeight);
+    }
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion) {
+        type = ser_readdata8(s);
+        hashBytes.Unserialize(s, nType, nVersion);
+        blockHeight = ser_readdata32be(s);
+    }
+
+    CAddressIndexIteratorHeightKey(unsigned int addressType, uint160 addressHash, int height) {
+        type = addressType;
+        hashBytes = addressHash;
+        blockHeight = height;
+    }
+
+    CAddressIndexIteratorHeightKey() {
+        SetNull();
+    }
+
+    void SetNull() {
+        type = 0;
+        hashBytes.SetNull();
+        blockHeight = 0;
+    }
 };
 
 struct CDiskTxPos : public CDiskBlockPos
@@ -299,7 +630,7 @@ CAmount GetMinRelayFee(const CTransaction& tx, unsigned int nBytes, bool fAllowF
 /**
  * Check transaction inputs, and make sure any
  * pay-to-script-hash transactions are evaluating IsStandard scripts
- *
+ * 
  * Why bother? To avoid denial-of-service attacks; an attacker
  * can submit a standard HASH... OP_EQUAL transaction,
  * which will get accepted into blocks. The redemption
@@ -308,14 +639,14 @@ CAmount GetMinRelayFee(const CTransaction& tx, unsigned int nBytes, bool fAllowF
  *   DUP CHECKSIG DROP ... repeated 100 times... OP_1
  */
 
-/**
+/** 
  * Check for standard transaction types
  * @param[in] mapInputs    Map of previous transactions that have outputs we're spending
  * @return True if all inputs (scriptSigs) use only standard transaction forms
  */
 bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs);
 
-/**
+/** 
  * Count ECDSA signature operations the old-fashioned (pre-0.6) way
  * @return number of sigops this transaction's outputs will produce when spent
  * @see CTransaction::FetchInputs
@@ -324,7 +655,7 @@ unsigned int GetLegacySigOpCount(const CTransaction& tx);
 
 /**
  * Count ECDSA signature operations in pay-to-script-hash inputs.
- *
+ * 
  * @param[in] mapInputs Map of previous transactions that have outputs we're spending
  * @return maximum number of sigops required to validate this transaction's inputs
  * @see CTransaction::FetchInputs
@@ -347,7 +678,6 @@ void UpdateCoins(const CTransaction& tx, CValidationState &state, CCoinsViewCach
 /** Context-independent validity checks */
 bool CheckTransaction(const CTransaction& tx, CValidationState& state, libzcash::ProofVerifier& verifier);
 bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidationState &state);
-bool CheckJoinSplitSigs(const CTransaction& tx, CValidationState &state, const unsigned int flags);
 
 /** Check for standard transaction types
  * @return True if all outputs (scriptPubKeys) use only standard transaction forms
@@ -369,9 +699,9 @@ bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime);
  */
 bool CheckFinalTx(const CTransaction &tx, int flags = -1);
 
-/**
+/** 
  * Closure representing one script verification
- * Note that this stores references to the spending transaction
+ * Note that this stores references to the spending transaction 
  */
 class CScriptCheck
 {
@@ -404,13 +734,17 @@ public:
 };
 
 
+bool GetTimestampIndex(const unsigned int &high, const unsigned int &low, const bool fActiveOnly, std::vector<std::pair<uint256, unsigned int> > &hashes);
+bool GetSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value);
+bool GetAddressIndex(uint160 addressHash, int type,
+                     std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex,
+                     int start = 0, int end = 0);
+bool GetAddressUnspent(uint160 addressHash, int type,
+                       std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > &unspentOutputs);
+
 /** Functions for disk access for blocks */
 bool WriteBlockToDisk(CBlock& block, CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& messageStart);
-bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos
-#ifdef FORK_CB_INPUT
-        , int nHeight = -1
-#endif
-);
+bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos);
 bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex);
 
 
@@ -427,7 +761,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
 /** Context-independent validity checks */
 bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, bool fCheckPOW = true);
-
 bool CheckBlock(const CBlock& block, CValidationState& state,
                 libzcash::ProofVerifier& verifier,
                 bool fCheckPOW = true, bool fCheckMerkleRoot = true);
@@ -446,11 +779,7 @@ bool TestBlockValidity(CValidationState &state, const CBlock& block, CBlockIndex
  * - The only caller of AcceptBlock verifies JoinSplit proofs elsewhere.
  * If dbp is non-NULL, the file is known to already reside on disk
  */
-bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex **pindex, bool fRequested, CDiskBlockPos* dbp
-#ifdef FORK_CB_INPUT
-        , bool fCalledFromMiner = false
-#endif
-    );
+bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex **pindex, bool fRequested, CDiskBlockPos* dbp);
 bool AcceptBlockHeader(const CBlockHeader& block, CValidationState& state, CBlockIndex **ppindex= NULL);
 
 
@@ -542,87 +871,8 @@ extern CBlockTreeDB *pblocktree;
  */
 int GetSpendHeight(const CCoinsViewCache& inputs);
 
-extern VersionBitsCache versionbitscache;
-
-/**
- * Determine what nVersion a new block should use.
- */
-int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Params& params);
-
 namespace Consensus {
 bool CheckTxInputs(const CTransaction& tx, CValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, const Consensus::Params& consensusParams);
 }
-
-#ifdef FORK_CB_INPUT
-#define FORK_COINBASE_PER_BLOCK 10000
-
-extern std::string forkUtxoPath;
-extern int64_t forkStartHeight;
-extern int64_t forkHeightRange;
-extern int64_t forkCBPerBlock;
-extern uint256 forkExtraHashSentinel;
-
-std::string GetUTXOFileName(int nHeight);
-
-//ex: forkStartHeight = 300 000; forkHeightRange = 65K
-//A. for miner:
-//   1.   Current height = 299 999; the next block to create 300 000
-//                  nHeight is 300 000 - return false
-//   2.   Current height = 300 000; the next block to create 300 001
-//                  nHeight is 300 001 - return true - file to use utxo-00001.bin
-//      ...
-//
-//   n-1. Current height = 364 999; the next block to create 365 000
-//                  nHeight is 365 000 - return true - file to use utxo-65000.bin
-//   n.   Current height = 365 000; the next block to create 365 001
-//                  nHeight is 365 001 - return false
-//
-//  fork blocks 300001 - 365000
-//
-//B. for acceptblock:
-//   1.   Current height = 299 999
-//                  nHeight is 299 999 - return false - no verification
-//   2.   Current height = 300 000
-//                  nHeight is 300 000 - return false - no verification
-//   3.   Current height = 300 001
-//                  nHeight is 300 001 - return true - verify with file utxo-00001.bin
-//      ...
-//
-//   n.   Current height = 365 000
-//                  nHeight is 365 000 - return true - verify with file utxo-65000.bin
-//   n+1. Current height = 365 001
-//                  nHeight is 365 001 - return false - no verification
-//
-inline bool isForkBlock(int nHeight)
-{
-    return (nHeight > forkStartHeight && nHeight <= forkStartHeight + forkHeightRange);
-}
-
-inline bool looksLikeForkBlockHeader(const CBlockHeader& header)
-{
-    return header.hashReserved == forkExtraHashSentinel;
-}
-
-inline uint64_t bytes2uint64(char *array)
-{
-    uint64_t x =
-    static_cast<uint64_t>(array[0])       & 0x00000000000000ff |
-    static_cast<uint64_t>(array[1]) << 8  & 0x000000000000ff00 |
-    static_cast<uint64_t>(array[2]) << 16 & 0x0000000000ff0000 |
-    static_cast<uint64_t>(array[3]) << 24 & 0x00000000ff000000 |
-    static_cast<uint64_t>(array[4]) << 32 & 0x000000ff00000000 |
-    static_cast<uint64_t>(array[5]) << 40 & 0x0000ff0000000000 |
-    static_cast<uint64_t>(array[6]) << 48 & 0x00ff000000000000 |
-    static_cast<uint64_t>(array[7]) << 56 & 0xff00000000000000;
-    return x;
-}
-#endif
-
-inline bool isForkEnabled(int nHeight)
-{
-    return nHeight > forkStartHeight;
-}
-
-extern uint256 hashPid;
 
 #endif // BITCOIN_MAIN_H

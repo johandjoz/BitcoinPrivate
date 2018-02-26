@@ -216,9 +216,6 @@ public:
 
     bool operator()(const CKeyID& id) const { return addr->Set(id); }
     bool operator()(const CScriptID& id) const { return addr->Set(id); }
-    bool operator()(const WitnessV0ScriptHash& w) const { return false; }
-    bool operator()(const WitnessV0KeyHash& w) const { return false; }
-    bool operator()(const WitnessUnknown& w) const { return false; }
     bool operator()(const CNoDestination& no) const { return false; }
 };
 
@@ -276,6 +273,23 @@ CTxDestination CBitcoinAddress::Get() const
         return CScriptID(id);
     else
         return CNoDestination();
+}
+
+bool CBitcoinAddress::GetIndexKey(uint160& hashBytes, int& type) const
+{
+    if (!IsValid()) {
+        return false;
+    } else if (vchVersion == Params().Base58Prefix(CChainParams::PUBKEY_ADDRESS)) {
+        memcpy(&hashBytes, &vchData[0], 20);
+        type = 1;
+        return true;
+    } else if (vchVersion == Params().Base58Prefix(CChainParams::SCRIPT_ADDRESS)) {
+        memcpy(&hashBytes, &vchData[0], 20);
+        type = 2;
+        return true;
+    }
+
+    return false;
 }
 
 bool CBitcoinAddress::GetKeyID(CKeyID& keyID) const
@@ -389,3 +403,4 @@ libzcash::SpendingKey CZCSpendingKey::Get() const
     ss >> ret;
     return ret;
 }
+

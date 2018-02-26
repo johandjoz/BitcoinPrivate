@@ -14,6 +14,7 @@ endif
 
 BITCOIND_BIN=$(top_builddir)/src/btcpd$(EXEEXT)
 BITCOIN_CLI_BIN=$(top_builddir)/src/btcp-cli$(EXEEXT)
+WALLET_UTILITY_BIN=$(top_builddir)/src/wallet-utility$(EXEEXT)
 BITCOIN_WIN_INSTALLER=$(PACKAGE)-$(PACKAGE_VERSION)-win$(WINDOWS_BITS)-setup$(EXEEXT)
 
 ##OSX_APP=Bitcoin-Qt.app
@@ -64,6 +65,7 @@ $(BITCOIN_WIN_INSTALLER): all-recursive
 	$(MKDIR_P) $(top_builddir)/release
 	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(BITCOIND_BIN) $(top_builddir)/release
 	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(BITCOIN_CLI_BIN) $(top_builddir)/release
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(WALLET_UTILITY_BIN) $(top_builddir)/release
 	@test -f $(MAKENSIS) && $(MAKENSIS) -V2 $(top_builddir)/share/setup.nsi || \
 	  echo error: could not build $@
 	@echo built $@
@@ -144,6 +146,9 @@ $(BITCOIND_BIN): FORCE
 $(BITCOIN_CLI_BIN): FORCE
 	$(MAKE) -C src $(@F)
 
+$(WALLET_UTILITY_BIN): FORCE
+	$(MAKE) -C src $(@F)
+
 if USE_LCOV
 
 baseline.info:
@@ -151,10 +156,10 @@ baseline.info:
 
 baseline_filtered.info: baseline.info
 	$(LCOV) -r $< "/usr/include/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/*.h" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/boost/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gmock/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gtest/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/*.h" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/boost/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gmock/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gtest/*" \
                       "$(abs_builddir)/src/gtest/*" \
                       "$(abs_builddir)/src/test/*" \
                       "$(abs_builddir)/src/wallet/gtest/*" \
@@ -166,10 +171,10 @@ leveldb_baseline.info: baseline_filtered.info
 
 leveldb_baseline_filtered.info: leveldb_baseline.info
 	$(LCOV) -r $< "/usr/include/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/*.h" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/boost/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gmock/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gtest/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/*.h" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/boost/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gmock/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gtest/*" \
                       "$(abs_builddir)/src/gtest/*" \
                       "$(abs_builddir)/src/test/*" \
                       "$(abs_builddir)/src/wallet/gtest/*" \
@@ -187,10 +192,10 @@ test_bitcoin.info: baseline_filtered_combined.info
 
 test_bitcoin_filtered.info: test_bitcoin.info
 	$(LCOV) -r $< "/usr/include/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/*.h" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/boost/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gmock/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gtest/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/*.h" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/boost/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gmock/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gtest/*" \
                       "$(abs_builddir)/src/gtest/*" \
                       "$(abs_builddir)/src/test/*" \
                       "$(abs_builddir)/src/wallet/gtest/*" \
@@ -205,10 +210,10 @@ zcash-gtest.info: baseline_filtered_combined.info
 
 zcash-gtest_filtered.info: zcash-gtest.info
 	$(LCOV) -r $< "/usr/include/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/*.h" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/boost/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gmock/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gtest/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/*.h" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/boost/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gmock/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gtest/*" \
                       "$(abs_builddir)/src/gtest/*" \
                       "$(abs_builddir)/src/test/*" \
                       "$(abs_builddir)/src/wallet/gtest/*" \
@@ -224,10 +229,10 @@ block_test.info: test_bitcoin_filtered.info
 
 block_test_filtered.info: block_test.info
 	$(LCOV) -r $< "/usr/include/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/*.h" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/boost/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gmock/*" \
-                      "$(abs_builddir)/depends/$(BUILD)/include/gtest/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/*.h" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/boost/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gmock/*" \
+                      "$(abs_builddir)/depends/x86_64-unknown-linux-gnu/include/gtest/*" \
                       "$(abs_builddir)/src/gtest/*" \
                       "$(abs_builddir)/src/test/*" \
                       "$(abs_builddir)/src/wallet/gtest/*" \
@@ -267,13 +272,13 @@ check-local:
 	@qa/pull-tester/run-bitcoind-for-test.sh $(JAVA) -jar $(JAVA_COMPARISON_TOOL) qa/tmp/compTool $(COMPARISON_TOOL_REORG_TESTS) 2>&1
 endif
 
-dist_bin_SCRIPTS = btcputil/fetch-params.sh
-dist_noinst_SCRIPTS = autogen.sh btcputil/build-debian-package.sh btcputil/build.sh
+dist_bin_SCRIPTS = zcutil/fetch-params.sh
+dist_noinst_SCRIPTS = autogen.sh zcutil/build-debian-package.sh zcutil/build.sh
 
-EXTRA_DIST = $(top_srcdir)/share/genbuild.sh qa/pull-tester/rpc-tests.sh qa/pull-tester/run-bitcoin-cli qa/rpc-tests qa/zcash $(DIST_DOCS) $(BIN_CHECKS)
+EXTRA_DIST = $(top_srcdir)/share/genbuild.sh qa/pull-tester/rpc-tests.sh qa/pull-tester/run-bitcoin-cli qa/rpc-tests qa/btcp $(DIST_DOCS) $(BIN_CHECKS)
 
 install-exec-hook:
-	mv $(DESTDIR)$(bindir)/fetch-params.sh $(DESTDIR)$(bindir)/zcash-fetch-params
+	mv $(DESTDIR)$(bindir)/fetch-params.sh $(DESTDIR)$(bindir)/btcp-fetch-params
 
 CLEANFILES = $(OSX_DMG) $(BITCOIN_WIN_INSTALLER)
 

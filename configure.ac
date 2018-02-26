@@ -2,8 +2,8 @@ dnl require autoconf 2.60 (AS_ECHO/AS_ECHO_N)
 AC_PREREQ([2.60])
 define(_CLIENT_VERSION_MAJOR, 1)
 define(_CLIENT_VERSION_MINOR, 0)
-define(_CLIENT_VERSION_REVISION, 10)
-define(_CLIENT_VERSION_BUILD, 51)
+define(_CLIENT_VERSION_REVISION, 13)
+define(_CLIENT_VERSION_BUILD, 50)
 define(_ZC_BUILD_VAL, m4_if(m4_eval(_CLIENT_VERSION_BUILD < 25), 1, m4_incr(_CLIENT_VERSION_BUILD), m4_eval(_CLIENT_VERSION_BUILD < 50), 1, m4_eval(_CLIENT_VERSION_BUILD - 24), m4_eval(_CLIENT_VERSION_BUILD == 50), 1, , m4_eval(_CLIENT_VERSION_BUILD - 50)))
 define(_CLIENT_VERSION_SUFFIX, m4_if(m4_eval(_CLIENT_VERSION_BUILD < 25), 1, _CLIENT_VERSION_REVISION-beta$1, m4_eval(_CLIENT_VERSION_BUILD < 50), 1, _CLIENT_VERSION_REVISION-rc$1, m4_eval(_CLIENT_VERSION_BUILD == 50), 1, _CLIENT_VERSION_REVISION, _CLIENT_VERSION_REVISION-$1)))
 define(_CLIENT_VERSION_IS_RELEASE, true)
@@ -24,7 +24,7 @@ dnl faketime breaks configure and is only needed for make. Disable it here.
 unset FAKETIME
 
 dnl Automake init set-up and checks
-AM_INIT_AUTOMAKE([no-define subdir-objects foreign])
+AM_INIT_AUTOMAKE([no-define subdir-objects foreign tar-pax])
 
 dnl faketime messes with timestamps and causes configure to be re-run.
 dnl --disable-maintainer-mode can be used to bypass this.
@@ -40,7 +40,8 @@ else
   CXXFLAGS_overridden=no
 fi
 
-# Zcash requries C++11 compatibility; set it early:
+# BTCP requries C++11 compatibility; set it early:
+
 CXXFLAGS="-std=c++11 $CXXFLAGS"
 
 AC_PROG_CXX
@@ -82,13 +83,6 @@ AC_ARG_ENABLE([wallet],
   [enable_wallet=$enableval],
   [enable_wallet=yes])
 
-# Enable fork mining
-AC_ARG_ENABLE([fork],
-  [AS_HELP_STRING([--enable-fork],
-  [enable fork (default is yes)])],
-  [enable_fork=$enableval],
-  [enable_fork=yes])
-
 AC_ARG_ENABLE([mining],
   [AS_HELP_STRING([--enable-mining],
   [enable mining (default is yes)])],
@@ -100,18 +94,6 @@ AC_ARG_ENABLE([rust],
   [enable rust (default is yes)])],
   [enable_rust=$enableval],
   [enable_rust=yes])
-
-AC_ARG_WITH([miniupnpc],
-  [AS_HELP_STRING([--with-miniupnpc],
-  [enable UPNP (default is yes if libminiupnpc is found)])],
-  [use_upnp=$withval],
-  [use_upnp=auto])
-
-AC_ARG_ENABLE([upnp-default],
-  [AS_HELP_STRING([--enable-upnp-default],
-  [if UPNP is enabled, turn it on at startup (default is no)])],
-  [use_upnp_default=$enableval],
-  [use_upnp_default=no])
 
 AC_ARG_ENABLE([proton],
   [AS_HELP_STRING([--disable-proton],
@@ -206,7 +188,7 @@ CPPFLAGS="$CPPFLAGS -DHAVE_BUILD_INFO -D__STDC_FORMAT_MACROS"
 
 AC_ARG_WITH([utils],
   [AS_HELP_STRING([--with-utils],
-  [build btcp-cli zcash-tx (default=yes)])],
+  [build btcp-cli btcp-tx wallet-utility (default=yes)])],
   [build_bitcoin_utils=$withval],
   [build_bitcoin_utils=yes])
 
@@ -459,6 +441,7 @@ if test x$use_hardening != xno; then
   if test x$TARGET_OS != xwindows; then
     AX_CHECK_LINK_FLAG([[-Wl,-z,relro]], [HARDENED_LDFLAGS="$HARDENED_LDFLAGS -Wl,-z,relro"],[AC_MSG_ERROR(Cannot enable RELRO)])
     AX_CHECK_LINK_FLAG([[-Wl,-z,now]], [HARDENED_LDFLAGS="$HARDENED_LDFLAGS -Wl,-z,now"],[AC_MSG_ERROR(Cannot enable BIND_NOW)])
+
     # All windows code is PIC, forcing it on just adds useless compile warnings
     AX_CHECK_COMPILE_FLAG([-fPIE],[HARDENED_CXXFLAGS="$HARDENED_CXXFLAGS -fPIE"],[AC_MSG_ERROR(Cannot enable -fPIE)])
     AX_CHECK_LINK_FLAG([[-pie]], [HARDENED_LDFLAGS="$HARDENED_LDFLAGS -pie"],[AC_MSG_ERROR(Cannot enable -pie)])
@@ -561,15 +544,6 @@ if test x$use_proton = xyes; then
     AC_DEFINE(ENABLE_PROTON, 1, [Define to 1 to enable Proton functions])
 else
     AC_DEFINE(ENABLE_PROTON, 0, [Define to 1 to enable Proton functions])
-fi
-
-dnl Check for libminiupnpc (optional)
-if test x$use_upnp != xno; then
-  AC_CHECK_HEADERS(
-    [miniupnpc/miniwget.h miniupnpc/miniupnpc.h miniupnpc/upnpcommands.h miniupnpc/upnperrors.h],
-    [AC_CHECK_LIB([miniupnpc], [main],[MINIUPNPC_LIBS=-lminiupnpc], [have_miniupnpc=no])],
-    [have_miniupnpc=no]
-  )
 fi
 
 if test x$build_bitcoin_utils$build_bitcoind$use_tests = xnonono; then
@@ -784,28 +758,20 @@ AC_CHECK_LIB([gmp],[[__gmpn_sub_n]],GMP_LIBS=-lgmp, [AC_MSG_ERROR(libgmp missing
 AC_CHECK_HEADER([gmpxx.h],,AC_MSG_ERROR(libgmpxx headers missing))
 AC_CHECK_LIB([gmpxx],[main],GMPXX_LIBS=-lgmpxx, [AC_MSG_ERROR(libgmpxx missing)])
 
-# libsnark header layout is broken unless cpp's -I is passed with the
-# libsnark directory, so for now we use this hideous workaround:
-echo 'Hunting for libsnark include directory...'
-[LIBSNARK_INCDIR="$(echo "$CPPFLAGS" | sed 's,^.*-I\([^ ]*/include\).*$,\1/libsnark,')"]
-if test -d "$LIBSNARK_INCDIR"; then
-   echo "Found libsnark include directory: $LIBSNARK_INCDIR"
-else
-    AC_MSG_ERROR(libsnark include directory not found)
-fi
-
-CPPFLAGS="-I$LIBSNARK_INCDIR $CPPFLAGS"
-
-# Now check for libsnark compilability using traditional autoconf tests:
-AC_CHECK_HEADER([libsnark/gadgetlib1/gadget.hpp],,AC_MSG_ERROR(libsnark headers missing))
-AC_CHECK_LIB([snark],[main],LIBSNARK_LIBS=-lsnark, [AC_MSG_ERROR(libsnark missing)], [-lgmpxx])
-
 RUST_LIBS=""
 if test x$enable_rust != xno; then
   RUST_LIBS="-lrustzcash"
 fi
 
-LIBZCASH_LIBS="-lsnark -lgmp -lgmpxx -lboost_system-mt -lcrypto -lsodium -fopenmp $RUST_LIBS"
+# Gitian uses a config.site that sets depends_prefix, and then sets --prefix=/
+# build.sh just uses --prefix
+if test x$depends_prefix != x; then
+  LIBSNARK_DEPINST="$depends_prefix"
+else
+  LIBSNARK_DEPINST="$prefix"
+fi
+
+LIBZCASH_LIBS="-lgmp -lgmpxx -lboost_system-mt -lcrypto -lsodium -fopenmp $RUST_LIBS"
 
 CXXFLAGS_TEMP="$CXXFLAGS"
 LIBS_TEMP="$LIBS"
@@ -819,7 +785,7 @@ AC_MSG_CHECKING([whether to build bitcoind])
 AM_CONDITIONAL([BUILD_BITCOIND], [test x$build_bitcoind = xyes])
 AC_MSG_RESULT($build_bitcoind)
 
-AC_MSG_CHECKING([whether to build utils (btcp-cli zcash-tx)])
+AC_MSG_CHECKING([whether to build utils (btcp-cli btcp-tx wallet-utility)])
 AM_CONDITIONAL([BUILD_BITCOIN_UTILS], [test x$build_bitcoin_utils = xyes])
 AC_MSG_RESULT($build_bitcoin_utils)
 
@@ -863,16 +829,6 @@ else
   AC_MSG_RESULT(no)
 fi
 
-dnl enable fork_mining
-AC_MSG_CHECKING([if fork mining should be enabled])
-if test x$enable_fork != xno; then
-  AC_MSG_RESULT(yes)
-  AC_DEFINE(FORK_CB_INPUT, 1, [Define to 1 to enable fork mining functions])
-
-else
-  AC_MSG_RESULT(no)
-fi
-
 dnl enable mining
 AC_MSG_CHECKING([if mining should be enabled])
 if test x$enable_mining != xno; then
@@ -891,33 +847,6 @@ if test x$enable_rust != xno; then
 
 else
   AC_MSG_RESULT(no)
-fi
-
-dnl enable upnp support
-AC_MSG_CHECKING([whether to build with support for UPnP])
-if test x$have_miniupnpc = xno; then
-  if test x$use_upnp = xyes; then
-     AC_MSG_ERROR("UPnP requested but cannot be built. use --without-miniupnpc")
-  fi
-  AC_MSG_RESULT(no)
-else
-  if test x$use_upnp != xno; then
-    AC_MSG_RESULT(yes)
-    AC_MSG_CHECKING([whether to build with UPnP enabled by default])
-    use_upnp=yes
-    upnp_setting=0
-    if test x$use_upnp_default != xno; then
-      use_upnp_default=yes
-      upnp_setting=1
-    fi
-    AC_MSG_RESULT($use_upnp_default)
-    AC_DEFINE_UNQUOTED([USE_UPNP],[$upnp_setting],[UPnP support not compiled if undefined, otherwise value (0 or 1) determines default state])
-    if test x$TARGET_OS = xwindows; then
-      MINIUPNPC_CPPFLAGS="-DSTATICLIB -DMINIUPNP_STATICLIB"
-    fi
-  else
-    AC_MSG_RESULT(no)
-  fi
 fi
 
 AM_CONDITIONAL([ENABLE_ZMQ], [test "x$use_zmq" = "xyes"])
@@ -948,7 +877,6 @@ AM_CONDITIONAL([TARGET_DARWIN], [test x$TARGET_OS = xdarwin])
 AM_CONDITIONAL([BUILD_DARWIN], [test x$BUILD_OS = xdarwin])
 AM_CONDITIONAL([TARGET_WINDOWS], [test x$TARGET_OS = xwindows])
 AM_CONDITIONAL([ENABLE_WALLET],[test x$enable_wallet = xyes])
-AM_CONDITIONAL([FORK_CB_INPUT],[test x$enable_fork = xyes])
 AM_CONDITIONAL([ENABLE_MINING],[test x$enable_mining = xyes])
 AM_CONDITIONAL([ENABLE_RUST],[test x$enable_rust = xyes])
 AM_CONDITIONAL([ENABLE_TESTS],[test x$BUILD_TEST = xyes])
@@ -973,15 +901,12 @@ AC_SUBST(COPYRIGHT_YEAR, _COPYRIGHT_YEAR)
 
 AC_SUBST(RELDFLAGS)
 AC_SUBST(LIBTOOL_APP_LDFLAGS)
-AC_SUBST(USE_UPNP)
 AC_SUBST(BOOST_LIBS)
 AC_SUBST(TESTDEFS)
 AC_SUBST(LEVELDB_TARGET_FLAGS)
-AC_SUBST(MINIUPNPC_CPPFLAGS)
-AC_SUBST(MINIUPNPC_LIBS)
 AC_SUBST(GMP_LIBS)
 AC_SUBST(GMPXX_LIBS)
-AC_SUBST(LIBSNARK_LIBS)
+AC_SUBST(LIBSNARK_DEPINST)
 AC_SUBST(LIBZCASH_LIBS)
 AC_SUBST(PROTON_LIBS)
 AC_CONFIG_FILES([Makefile src/Makefile doc/man/Makefile share/setup.nsi src/test/buildenv.py])
@@ -1012,7 +937,7 @@ unset PKG_CONFIG_LIBDIR
 PKG_CONFIG_LIBDIR="$PKGCONFIG_LIBDIR_TEMP"
 
 ac_configure_args="${ac_configure_args} --disable-shared --with-pic --with-bignum=no --enable-module-recovery"
-AC_CONFIG_SUBDIRS([src/secp256k1 src/univalue])
+AC_CONFIG_SUBDIRS([src/secp256k1 src/snark src/univalue])
 
 AC_OUTPUT
 
