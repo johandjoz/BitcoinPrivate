@@ -76,9 +76,9 @@ endif
 
 if BUILD_BITCOIN_UTILS
   bin_PROGRAMS += btcp-cli zcash-tx
-  if ENABLE_WALLET
+if ENABLE_WALLET
   bin_PROGRAMS += wallet-utility
-  endif
+endif
 endif
 
 LIBZCASH_H = \
